@@ -14,6 +14,8 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import brentq
 
+from .black import black76_delta
+
 _SQRT_2PI = math.sqrt(2.0 * math.pi)
 
 
@@ -107,4 +109,11 @@ def implied_vol_surface(chain: pd.DataFrame, forwards: pd.DataFrame, price_col: 
     out["otm"] = otm
     out["log_moneyness"] = np.log(out["strike"] / out["forward"])
     out["total_var"] = out["iv"] ** 2 * out["T"]
+    out["delta"] = black76_delta(
+        out["forward"].to_numpy(),
+        out["strike"].to_numpy(),
+        out["T"].to_numpy(),
+        out["iv"].to_numpy(),
+        out["type"].to_numpy(),
+    )
     return out
