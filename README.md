@@ -21,7 +21,7 @@ The project is built in increments. Each item lands when it works and is tested.
 
 - [x] Deribit client and tidy option chain, with DuckDB snapshots
 - [x] Forward and discount from put-call parity, cross-checked against the exchange
-- [ ] Implied vol solver, robust in the wings
+- [x] Black-76 pricer and implied vol solver, robust in the wings
 - [ ] SVI per-slice fit with a butterfly no-arbitrage constraint
 - [ ] SSVI surface with a calendar no-arbitrage constraint
 - [ ] Heston characteristic function, European pricing by the COS method and Carr-Madan FFT
