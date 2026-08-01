@@ -59,7 +59,10 @@ def load_chain(
 
     rows = []
     for row in summary:
-        inst = parse_instrument(row["instrument_name"])
+        try:
+            inst = parse_instrument(row["instrument_name"])
+        except ValueError:
+            continue  # skip anything that is not a plain option (combos and such)
         ttm = (inst.expiry - as_of).total_seconds() / (_YEAR_DAYS * 86400.0)
         if ttm <= 0:
             continue
@@ -69,6 +72,7 @@ def load_chain(
             continue
         if (row.get("volume") or 0.0) < min_volume:
             continue
+        mid = mid if mid is not None else 0.5 * (bid + ask)
         rows.append(
             {
                 "as_of": as_of,
@@ -80,7 +84,8 @@ def load_chain(
                 "strike": inst.strike,
                 "bid": bid,
                 "ask": ask,
-                "mid": mid if mid is not None else 0.5 * (bid + ask),
+                "mid": mid,
+                "rel_spread": (ask - bid) / mid if mid > 0 else float("nan"),
                 "mark": row.get("mark_price"),
                 "mark_iv": (row.get("mark_iv") or float("nan")) / 100.0,
                 "forward": row.get("underlying_price"),  # Deribit per-expiry forward

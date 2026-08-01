@@ -29,6 +29,7 @@ def test_recovers_forward_and_rate():
     assert abs(fwd.forward - F) / F < 1e-3
     assert abs(fwd.rate - r) < 1e-3
     assert 0.0 < fwd.discount < 1.0
+    assert fwd.r2 > 0.99  # parity line fits the synthetic quotes tightly
 
 
 def test_discount_matches_rate():

@@ -31,6 +31,7 @@ class Forward(NamedTuple):
     discount: float
     rate: float
     n_pairs: int
+    r2: float  # quality of the parity regression, flags noisy expiries
     forward_ref: Optional[float]  # exchange-reported forward, for comparison
 
 
@@ -71,7 +72,10 @@ def implied_forward(
         raise ValueError("non-positive discount factor from parity regression")
     forward = intercept / discount
     rate = -math.log(discount) / T
-    return Forward(T, forward, discount, rate, len(band), ref)
+    residual = y - (slope * k + intercept)
+    ss_tot = float(np.sum((y - y.mean()) ** 2))
+    r2 = 1.0 - float(np.sum(residual ** 2)) / ss_tot if ss_tot > 0 else float("nan")
+    return Forward(T, forward, discount, rate, len(band), r2, ref)
 
 
 def forward_curve(chain: pd.DataFrame, **kwargs) -> pd.DataFrame:
@@ -90,6 +94,7 @@ def forward_curve(chain: pd.DataFrame, **kwargs) -> pd.DataFrame:
                 "discount": fwd.discount,
                 "rate": fwd.rate,
                 "n_pairs": fwd.n_pairs,
+                "r2": fwd.r2,
                 "forward_deribit": fwd.forward_ref,
             }
         )
