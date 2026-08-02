@@ -23,7 +23,7 @@ The project is built in increments. Each item lands when it works and is tested.
 - [x] Forward and discount from put-call parity, cross-checked against the exchange
 - [x] Black-76 pricer and implied vol solver, robust in the wings
 - [x] SVI per-slice fit with a butterfly no-arbitrage constraint
-- [ ] SSVI surface with a calendar no-arbitrage constraint
+- [x] SSVI surface with a calendar no-arbitrage constraint
 - [ ] Heston characteristic function, European pricing by the COS method and Carr-Madan FFT
 - [ ] Heston calibration to the surface
 - [ ] Dupire local vol from the SVI surface, by analytic differentiation
@@ -46,11 +46,23 @@ Gatheral's density g(k) for the same slices stays non-negative everywhere, so ea
 
 Figures are a market snapshot; regenerate them with `python scripts/plot_svi.py`.
 
+### SSVI surface
+
+Tying the slices into one surface with SSVI. The at-the-money variance term structure is taken from the SVI slices and forced non-decreasing, then a single set of parameters (rho, eta, gamma) is fit to the whole surface under the Gatheral-Jacquier butterfly bound eta*(1 + |rho|) <= 2. Both no-arbitrage conditions hold by construction, so the surface is arbitrage-free everywhere.
+
+![SSVI implied vol surface](figures/ssvi_surface.png)
+
+Total variance is non-decreasing in maturity at every moneyness, which is exactly the no-calendar-arbitrage condition.
+
+![Total variance rises with maturity](figures/ssvi_calendar.png)
+
+One surface with three parameters is far more constrained than thirteen independent five-parameter slices, so the global fit trades some per-slice accuracy (about 3 vol points RMSE here) for a single self-consistent arbitrage-free surface. Regenerate with `python scripts/plot_ssvi.py`.
+
 ## Layout
 
-    src/volsurface/       black-76 pricing, implied vol, svi calibration
+    src/volsurface/       black-76 pricing, implied vol, svi and ssvi calibration
     src/volsurface/data/  market data: Deribit client, chain parsing, parity forward
-    scripts/              snapshot to DuckDB, and svi fit figures
+    scripts/              snapshot to DuckDB, and svi and ssvi figures
     tests/                unit tests that run without network access
 
 ## Getting started
