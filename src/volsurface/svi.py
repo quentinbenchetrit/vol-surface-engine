@@ -13,6 +13,7 @@ The fit enforces g >= 0 on a grid, so the calibrated slice is arbitrage-free.
 """
 from __future__ import annotations
 
+import math
 from typing import NamedTuple, Optional
 
 import numpy as np
@@ -61,6 +62,23 @@ def density_g(k, p: SVIParams):
     return (1.0 - k * wp / (2.0 * w)) ** 2 - (wp * wp / 4.0) * (1.0 / w + 0.25) + wpp / 2.0
 
 
+def min_total_variance(p: SVIParams) -> float:
+    """Minimum of w over all k, reached at k = m - rho*s/sqrt(1-rho^2).
+
+    Must be non-negative for the slice to be a valid variance curve.
+    """
+    return p.a + p.b * p.s * math.sqrt(max(0.0, 1.0 - p.rho * p.rho))
+
+
+def atm_total_variance(p: SVIParams) -> float:
+    """Total variance at the forward, k = 0. Feeds the SSVI term structure."""
+    return float(total_variance(0.0, p))
+
+
+def atm_vol(p: SVIParams, T: float) -> float:
+    return math.sqrt(max(atm_total_variance(p), 0.0) / T)
+
+
 def _bounds(k, w):
     return (
         [1e-8, 1e-6, -0.999, float(np.min(k)) - 1.0, 1e-4],
@@ -68,13 +86,17 @@ def _bounds(k, w):
     )
 
 
-def fit_slice(k, w, weights=None, enforce_butterfly: bool = True, T: Optional[float] = None) -> SVIFit:
+def fit_slice(k, w, weights=None, enforce_butterfly: bool = True, T: Optional[float] = None, eps_w: float = 1e-8) -> SVIFit:
     """Calibrate one SVI slice to total-variance points (k, w)."""
     k = np.asarray(k, dtype=float)
     w = np.asarray(w, dtype=float)
-    if weights is None:
-        weights = np.ones_like(w)
-    sqrt_w = np.sqrt(np.asarray(weights, dtype=float))
+    base = np.ones_like(w) if weights is None else np.asarray(weights, dtype=float)
+    # Fit in implied-vol space: a total-variance residual dw is a vol error of
+    # dw / (2*sqrt(w*T)), so weighting by 1/(4 w T) stops the wings from
+    # dominating and lines the objective up with the reported vol RMSE.
+    if T is not None:
+        base = base / (4.0 * np.maximum(w, 1e-8) * T)
+    sqrt_w = np.sqrt(base)
 
     lb, ub = _bounds(k, w)
     i_min = int(np.argmin(w))
@@ -88,15 +110,19 @@ def fit_slice(k, w, weights=None, enforce_butterfly: bool = True, T: Optional[fl
     params = SVIParams(*sol.x)
 
     grid = np.linspace(k.min() - 0.2, k.max() + 0.2, 60)
-    if enforce_butterfly and float(np.min(density_g(grid, params))) < 0.0:
+    infeasible = float(np.min(density_g(grid, params))) < 0.0 or min_total_variance(params) < eps_w
+    if enforce_butterfly and infeasible:
         def objective(theta):
             r = residuals(theta)
             return 0.5 * float(r @ r)
 
-        cons = {"type": "ineq", "fun": lambda theta: density_g(grid, SVIParams(*theta))}
+        cons = [
+            {"type": "ineq", "fun": lambda theta: density_g(grid, SVIParams(*theta))},
+            {"type": "ineq", "fun": lambda theta: min_total_variance(SVIParams(*theta)) - eps_w},
+        ]
         pol = minimize(
             objective, sol.x, method="SLSQP",
-            bounds=list(zip(lb, ub)), constraints=[cons],
+            bounds=list(zip(lb, ub)), constraints=cons,
             options={"maxiter": 500, "ftol": 1e-12},
         )
         if pol.success:

@@ -5,6 +5,9 @@ from volsurface.svi import (
     total_variance,
     density_g,
     fit_slice,
+    atm_total_variance,
+    atm_vol,
+    min_total_variance,
     _w_derivs,
 )
 
@@ -45,6 +48,15 @@ def test_fit_recovers_a_known_smile():
     assert fit.arbitrage_free
     assert np.allclose(total_variance(k, fit.params), w, atol=1e-4)
     assert fit.rmse_vol < 1e-2
+
+
+def test_atm_helpers_and_positive_variance():
+    k = np.linspace(-0.6, 0.6, 21)
+    w = total_variance(k, CALM)
+    fit = fit_slice(k, w, T=0.5)
+    assert min_total_variance(fit.params) > 0.0
+    assert np.isclose(atm_total_variance(fit.params), total_variance(0.0, fit.params))
+    assert np.isclose(atm_vol(fit.params, 0.5), np.sqrt(atm_total_variance(fit.params) / 0.5))
 
 
 def test_fit_stays_arbitrage_free_on_a_steep_smile():
