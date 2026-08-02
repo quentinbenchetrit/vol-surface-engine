@@ -22,7 +22,7 @@ The project is built in increments. Each item lands when it works and is tested.
 - [x] Deribit client and tidy option chain, with DuckDB snapshots
 - [x] Forward and discount from put-call parity, cross-checked against the exchange
 - [x] Black-76 pricer and implied vol solver, robust in the wings
-- [ ] SVI per-slice fit with a butterfly no-arbitrage constraint
+- [x] SVI per-slice fit with a butterfly no-arbitrage constraint
 - [ ] SSVI surface with a calendar no-arbitrage constraint
 - [ ] Heston characteristic function, European pricing by the COS method and Carr-Madan FFT
 - [ ] Heston calibration to the surface
@@ -34,20 +34,37 @@ The project is built in increments. Each item lands when it works and is tested.
 - [ ] Delta-hedging P&L backtest
 - [ ] Optional C++ Monte Carlo core with pybind11
 
+## Results
+
+Slice-by-slice SVI fits to the live BTC surface: market out-of-the-money mid vols against the arbitrage-free SVI curve. Raw SVI captures the skew and the wings across maturities; the steep far call wing on some slices is where a single arbitrage-free slice is hardest to match.
+
+![SVI smiles, market vs fit](figures/svi_smiles.png)
+
+Gatheral's density g(k) for the same slices stays non-negative everywhere, so each calibrated slice is free of butterfly arbitrage.
+
+![Gatheral density stays non-negative](figures/svi_density.png)
+
+Figures are a market snapshot; regenerate them with `python scripts/plot_svi.py`.
+
 ## Layout
 
-    src/volsurface/data/   market data: Deribit client, chain parsing, parity forward
-    scripts/               snapshot utility that appends a surface to DuckDB
-    tests/                 unit tests that run without network access
+    src/volsurface/       black-76 pricing, implied vol, svi calibration
+    src/volsurface/data/  market data: Deribit client, chain parsing, parity forward
+    scripts/              snapshot to DuckDB, and svi fit figures
+    tests/                unit tests that run without network access
 
 ## Getting started
 
     python -m venv .venv && source .venv/bin/activate
-    pip install -e ".[dev]"
+    pip install -e ".[dev,plot]"
 
 Take a snapshot of the current BTC surface:
 
     python scripts/snapshot.py --currency BTC --db data/deribit_btc.duckdb
+
+Fit SVI slices and draw the figures above:
+
+    python scripts/plot_svi.py --currency BTC
 
 Run the tests:
 
