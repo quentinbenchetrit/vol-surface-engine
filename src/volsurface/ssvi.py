@@ -22,6 +22,7 @@ import math
 from typing import NamedTuple
 
 import numpy as np
+from scipy.interpolate import PchipInterpolator
 from scipy.optimize import minimize
 
 from .svi import SVIParams, calibrate_slices
@@ -49,9 +50,38 @@ def phi_power(theta, eta: float, gamma: float):
     return eta * np.power(theta, -gamma)
 
 
+def _theta_spline(params: SSVIParams):
+    """Monotone C1 interpolator of the ATM variance knots.
+
+    PCHIP is used rather than a plain linear interpolation because the local
+    volatility step needs a continuous dtheta/dT, and PCHIP preserves the
+    monotonicity of theta, so the calendar no-arbitrage condition survives.
+    """
+    if len(params.T_knots) < 3:
+        return None
+    return PchipInterpolator(params.T_knots, params.theta_knots, extrapolate=True)
+
+
 def theta_at(T, params: SSVIParams):
-    """ATM total variance at maturity T, linearly interpolated and flat-extrapolated."""
-    return np.interp(np.asarray(T, dtype=float), params.T_knots, params.theta_knots)
+    """ATM total variance at maturity T, monotonically interpolated."""
+    T = np.asarray(T, dtype=float)
+    spline = _theta_spline(params)
+    if spline is None:
+        return np.interp(T, params.T_knots, params.theta_knots)
+    lo, hi = params.T_knots[0], params.T_knots[-1]
+    return spline(np.clip(T, lo, hi))
+
+
+def dtheta_dT(T, params: SSVIParams):
+    """Slope of the ATM variance term structure; non-negative when theta is."""
+    T = np.asarray(T, dtype=float)
+    lo, hi = params.T_knots[0], params.T_knots[-1]
+    spline = _theta_spline(params)
+    if spline is None:
+        slope = np.gradient(params.theta_knots, params.T_knots)
+        return np.interp(np.clip(T, lo, hi), params.T_knots, slope)
+    inside = (T >= lo) & (T <= hi)
+    return np.where(inside, spline.derivative()(np.clip(T, lo, hi)), 0.0)
 
 
 def total_variance(k, T, params: SSVIParams):
@@ -69,6 +99,20 @@ def implied_vol(k, T, params: SSVIParams):
 def to_svi(theta: float, params: SSVIParams) -> SVIParams:
     """Express one SSVI slice as raw SVI, so the Gatheral density can be reused."""
     phi = params.eta * theta ** (-params.gamma)
+    root = math.sqrt(max(0.0, 1.0 - params.rho * params.rho))
+    return SVIParams(
+        a=0.5 * theta * (1.0 - params.rho * params.rho),
+        b=0.5 * theta * phi,
+        rho=params.rho,
+        m=-params.rho / phi,
+        s=root / phi,
+    )
+
+
+def to_svi_vec(theta, params: SSVIParams) -> SVIParams:
+    """Vectorized :func:`to_svi`: theta may be an array, fields come back as arrays."""
+    theta = np.asarray(theta, dtype=float)
+    phi = phi_power(theta, params.eta, params.gamma)
     root = math.sqrt(max(0.0, 1.0 - params.rho * params.rho))
     return SVIParams(
         a=0.5 * theta * (1.0 - params.rho * params.rho),
