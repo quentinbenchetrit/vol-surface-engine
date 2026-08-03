@@ -25,7 +25,7 @@ The project is built in increments. Each item lands when it works and is tested.
 - [x] SVI per-slice fit with a butterfly no-arbitrage constraint
 - [x] SSVI surface with a calendar no-arbitrage constraint
 - [x] Heston characteristic function, European pricing by the COS method and Carr-Madan FFT
-- [ ] Heston calibration to the surface
+- [x] Heston calibration to the surface
 - [ ] Dupire local vol from the SVI surface, by analytic differentiation
 - [ ] Heston Monte Carlo with the Andersen QE scheme
 - [ ] Variance reduction: antithetics and control variates
@@ -66,11 +66,19 @@ Moving from the static surface to a dynamic model. The Heston characteristic fun
 
 COS prices a strip of strikes in well under a millisecond, which is what makes the model fast to calibrate next. Regenerate with `python scripts/plot_heston.py`.
 
+### Heston calibration
+
+Fitting the five Heston parameters to the whole live surface in implied-vol space, pricing every strike by COS at each step. The fit is good at medium and long maturities but visibly struggles with the steep short-dated skew, which is the textbook limitation of one-factor Heston: matching it forces the vol of vol up until the Feller condition breaks, and it really wants jumps (Bates) instead. Shown, not hidden.
+
+![Heston fit vs market across maturities](figures/heston_fit.png)
+
+Regenerate with `python scripts/plot_heston_calibration.py`.
+
 ## Layout
 
     src/volsurface/       black-76 pricing, implied vol, svi/ssvi surfaces, heston
     src/volsurface/data/  market data: Deribit client, chain parsing, parity forward
-    scripts/              snapshot to DuckDB, and svi, ssvi and heston figures
+    scripts/              snapshot to DuckDB, and svi, ssvi and heston figures (fit included)
     tests/                unit tests that run without network access
 
 ## Getting started
