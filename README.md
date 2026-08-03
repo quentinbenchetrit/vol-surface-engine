@@ -100,13 +100,32 @@ Local vol is close to implied at the money and roughly twice as steep in skew ne
     python -m venv .venv && source .venv/bin/activate
     pip install -e ".[dev,plot]"
 
-Take a snapshot of the current BTC surface:
+The whole pipeline, from live quotes to a local volatility, is a handful of lines:
+
+```python
+from volsurface import implied_vol_surface, ssvi, heston, dupire
+from volsurface.data import load_chain, forward_curve
+
+chain = load_chain("BTC")                          # full option chain, one API call
+surface = implied_vol_surface(chain, forward_curve(chain))
+
+fit = ssvi.calibrate(surface)                      # arbitrage-free surface
+fit.butterfly_ok, fit.calendar_ok                  # both True by construction
+
+hes = heston.calibrate(surface)                    # dynamic model, ~1s
+heston.price_cos(F, K, 0.0, 0.0, T, hes.params)    # price any European
+
+dupire.local_vol(k, T, fit.params)                 # local vol at (k, T)
+```
+
+Scripts that reproduce every figure above:
 
     python scripts/snapshot.py --currency BTC --db data/deribit_btc.duckdb
-
-Fit SVI slices and draw the figures above:
-
     python scripts/plot_svi.py --currency BTC
+    python scripts/plot_ssvi.py --currency BTC
+    python scripts/plot_heston.py
+    python scripts/plot_heston_calibration.py --currency BTC
+    python scripts/plot_dupire.py --currency BTC
 
 Run the tests:
 
