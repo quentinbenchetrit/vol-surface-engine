@@ -24,7 +24,7 @@ The project is built in increments. Each item lands when it works and is tested.
 - [x] Black-76 pricer and implied vol solver, robust in the wings
 - [x] SVI per-slice fit with a butterfly no-arbitrage constraint
 - [x] SSVI surface with a calendar no-arbitrage constraint
-- [ ] Heston characteristic function, European pricing by the COS method and Carr-Madan FFT
+- [x] Heston characteristic function, European pricing by the COS method and Carr-Madan FFT
 - [ ] Heston calibration to the surface
 - [ ] Dupire local vol from the SVI surface, by analytic differentiation
 - [ ] Heston Monte Carlo with the Andersen QE scheme
@@ -58,11 +58,19 @@ Total variance is non-decreasing in maturity at every moneyness, which is exactl
 
 One surface with three parameters is far more constrained than thirteen independent five-parameter slices, so the global fit trades some per-slice accuracy (about 3 vol points RMSE here) for a single self-consistent arbitrage-free surface. Regenerate with `python scripts/plot_ssvi.py`.
 
+### Heston pricing
+
+Moving from the static surface to a dynamic model. The Heston characteristic function is priced two independent ways, the COS method and the Carr-Madan FFT, and they agree to about 1e-3. The left panel is the implied vol smile the model produces (downward skew from rho < 0, flattening with maturity), priced by COS and inverted with the solver from the earlier step.
+
+![Heston smile and COS vs Carr-Madan](figures/heston_smiles.png)
+
+COS prices a strip of strikes in well under a millisecond, which is what makes the model fast to calibrate next. Regenerate with `python scripts/plot_heston.py`.
+
 ## Layout
 
-    src/volsurface/       black-76 pricing, implied vol, svi and ssvi calibration
+    src/volsurface/       black-76 pricing, implied vol, svi/ssvi surfaces, heston
     src/volsurface/data/  market data: Deribit client, chain parsing, parity forward
-    scripts/              snapshot to DuckDB, and svi and ssvi figures
+    scripts/              snapshot to DuckDB, and svi, ssvi and heston figures
     tests/                unit tests that run without network access
 
 ## Getting started
@@ -88,3 +96,4 @@ Run the tests:
 - Fang and Oosterlee, A novel pricing method based on Fourier-cosine series (2008).
 - Andersen, Simple and efficient simulation of the Heston stochastic volatility model (2008).
 - Carr and Madan, Option valuation using the fast Fourier transform (1999).
+- Albrecher et al., The little Heston trap (2007).
