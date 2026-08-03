@@ -91,11 +91,16 @@ def price_cos(S0, K, r, q, T, p: HestonParams, option: str = "C", N: int = 256, 
     u = k * np.pi / (b - a)
     cf = cf_log_return(u, T, p, r, q)
 
+    # The payoff is integrated over the part of the truncation range where it is
+    # alive, clamped to [a, b] so the coefficients stay consistent even when a
+    # large drift pushes the whole interval to one side of the money.
     is_call = option.upper().startswith("C")
     if is_call:
-        coeff = _chi(u, a, 0.0, b) - _psi(u, a, 0.0, b)
+        lo, hi = min(max(0.0, a), b), b
+        coeff = _chi(u, a, lo, hi) - _psi(u, a, lo, hi)
     else:
-        coeff = _psi(u, a, a, 0.0) - _chi(u, a, a, 0.0)
+        lo, hi = a, max(min(0.0, b), a)
+        coeff = _psi(u, a, lo, hi) - _chi(u, a, lo, hi)
 
     x = np.log(S0 / K)                                  # (M,)
     F = (cf[None, :] * np.exp(1j * np.outer(x - a, u))).real  # (M, N)
