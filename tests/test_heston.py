@@ -1,8 +1,10 @@
 import numpy as np
+import pandas as pd
 
 from volsurface import black76_price, implied_vol
 from volsurface.heston import (
     HestonParams,
+    calibrate,
     feller_ok,
     price_cos,
     price_carr_madan,
@@ -54,3 +56,29 @@ def test_cos_convergence():
     coarse = price_cos(S0, K, r, q, T, P, "C", N=64)
     fine = price_cos(S0, K, r, q, T, P, "C", N=512)
     assert abs(coarse - fine) < 1e-3
+
+
+def _synthetic_surface(true, F=100.0):
+    rows = []
+    for T in (0.1, 0.25, 0.5, 1.0):
+        kmax = 3.0 * np.sqrt(true.theta * T)
+        for k in np.linspace(-kmax, kmax, 11):
+            K = F * np.exp(k)
+            call = price_cos(F, K, 0.0, 0.0, T, true, "C")
+            iv = implied_vol(call, F, K, T, 1.0, "C")
+            rows.append({
+                "expiry": pd.Timestamp("2026-01-01") + pd.Timedelta(days=int(round(T * 365))),
+                "forward": F, "discount": 1.0, "T": T, "strike": K,
+                "iv": iv, "otm": True, "rel_spread": 0.05,
+            })
+    return pd.DataFrame(rows)
+
+
+def test_calibration_recovers_synthetic_surface():
+    true = HestonParams(kappa=2.5, theta=0.05, xi=0.4, rho=-0.6, v0=0.03)
+    fit = calibrate(_synthetic_surface(true))
+    assert fit.rmse_vol < 3e-3
+    assert fit.feller_ok == feller_ok(true)
+    assert abs(fit.params.theta - true.theta) < 0.01
+    assert abs(fit.params.v0 - true.v0) < 0.01
+    assert abs(fit.params.rho - true.rho) < 0.1

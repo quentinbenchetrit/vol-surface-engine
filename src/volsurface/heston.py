@@ -21,6 +21,9 @@ from __future__ import annotations
 from typing import NamedTuple
 
 import numpy as np
+from scipy.optimize import least_squares
+
+from .impliedvol import implied_vol
 
 
 class HestonParams(NamedTuple):
@@ -127,3 +130,74 @@ def price_carr_madan_at(S0, K, r, q, T, p: HestonParams, **kwargs):
     """Call price at a single strike, by interpolating the Carr-Madan grid."""
     strikes, calls = price_carr_madan(S0, r, q, T, p, **kwargs)
     return float(np.interp(np.log(K), np.log(strikes), calls))
+
+
+class HestonFit(NamedTuple):
+    params: HestonParams
+    rmse_vol: float
+    feller_ok: bool
+    n_points: int
+    n_expiries: int
+
+
+def _model_vols(F, K, T, p: HestonParams):
+    """Heston implied vols on the forward: price calls by COS, invert to vol."""
+    calls = np.atleast_1d(price_cos(F, K, 0.0, 0.0, T, p, "C"))
+    return np.array([implied_vol(c, F, k, T, 1.0, "C") for c, k in zip(calls, np.atleast_1d(K))])
+
+
+def calibrate(surface, use_otm: bool = True, weight_by_liquidity: bool = True, max_nfev: int = 600) -> HestonFit:
+    """Fit Heston (kappa, theta, xi, rho, v0) to an implied-vol surface frame.
+
+    Works on the forward (F, discount already in the surface columns), fits in
+    implied-vol space so the residual is directly in vol points, and weights by
+    the inverse relative spread when available.
+    """
+    sl = surface.dropna(subset=["iv", "forward", "T"])
+    if use_otm and "otm" in sl.columns:
+        sl = sl[sl["otm"]]
+
+    groups, atm = [], []
+    for _, g in sl.groupby("expiry"):
+        F = float(g["forward"].iloc[0])
+        T = float(g["T"].iloc[0])
+        K = g["strike"].to_numpy(dtype=float)
+        iv = g["iv"].to_numpy(dtype=float)
+        if "rel_spread" in g.columns and weight_by_liquidity and g["rel_spread"].notna().any():
+            sw = np.sqrt(1.0 / np.clip(g["rel_spread"].to_numpy(dtype=float), 1e-3, None))
+        else:
+            sw = np.ones_like(iv)
+        groups.append((F, T, K, iv, sw))
+        atm.append((T, float(iv[np.argmin(np.abs(K / F - 1.0))])))
+
+    if len(groups) < 2:
+        raise ValueError("need at least two expiries to calibrate Heston")
+
+    atm.sort()
+    v0_0 = atm[0][1] ** 2          # front at-the-money variance
+    theta_0 = atm[-1][1] ** 2      # long at-the-money variance
+    x0 = np.array([2.0, theta_0, 0.6, -0.5, v0_0])
+    lb = np.array([0.1, 1e-4, 1e-2, -0.999, 1e-4])
+    ub = np.array([20.0, 4.0, 10.0, 0.99, 4.0])
+    x0 = np.clip(x0, lb, ub)
+
+    def residuals(x):
+        p = HestonParams(*x)
+        out = []
+        for F, T, K, iv_mkt, sw in groups:
+            iv_mod = _model_vols(F, K, T, p)
+            r = sw * (np.where(np.isfinite(iv_mod), iv_mod, iv_mkt) - iv_mkt)
+            out.append(r)
+        return np.concatenate(out)
+
+    sol = least_squares(residuals, x0, bounds=(lb, ub), method="trf", max_nfev=max_nfev)
+    p = HestonParams(*sol.x)
+
+    # unweighted RMSE in vol points
+    diffs = []
+    for F, T, K, iv_mkt, _ in groups:
+        iv_mod = _model_vols(F, K, T, p)
+        diffs.append((np.where(np.isfinite(iv_mod), iv_mod, iv_mkt) - iv_mkt))
+    diffs = np.concatenate(diffs)
+    rmse = float(np.sqrt(np.mean(diffs ** 2)))
+    return HestonFit(p, rmse, feller_ok(p), diffs.size, len(groups))
