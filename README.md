@@ -26,7 +26,7 @@ The project is built in increments. Each item lands when it works and is tested.
 - [x] SSVI surface with a calendar no-arbitrage constraint
 - [x] Heston characteristic function, European pricing by the COS method and Carr-Madan FFT
 - [x] Heston calibration to the surface
-- [ ] Dupire local vol from the SVI surface, by analytic differentiation
+- [x] Dupire local vol from the SVI surface, by analytic differentiation
 - [ ] Heston Monte Carlo with the Andersen QE scheme
 - [ ] Variance reduction: antithetics and control variates
 - [ ] Exotics: barriers, autocallable, cliquet
@@ -74,9 +74,23 @@ Fitting the five Heston parameters to the whole live surface in implied-vol spac
 
 Regenerate with `python scripts/plot_heston_calibration.py`.
 
+### Dupire local volatility
+
+The third model: the one diffusion that reprices every vanilla exactly. Written in total variance, Dupire's denominator turns out to be exactly Gatheral's g(k) from the butterfly condition, so the formula collapses to
+
+    sigma_loc^2 = w_T / g(k)
+
+which makes the dependency explicit: butterfly (g >= 0) and calendar (w_T >= 0) are jointly what keep the local variance positive, and the SSVI fit enforces both. Under SSVI maturity enters only through theta(T), so w_T follows by the chain rule with dw/dtheta in closed form; theta is interpolated with PCHIP, which is C1 and monotonicity-preserving.
+
+Deriving this from the fitted surface rather than raw quotes is the point. Dupire needs a second derivative in strike, which is unstable on noisy prices and can turn negative; on SSVI every derivative is analytic.
+
+![Local volatility surface and slices](figures/dupire_local_vol.png)
+
+Local vol is close to implied at the money and roughly twice as steep in skew nearby, which is the textbook relationship. Regenerate with `python scripts/plot_dupire.py`.
+
 ## Layout
 
-    src/volsurface/       black-76 pricing, implied vol, svi/ssvi surfaces, heston
+    src/volsurface/       black-76 pricing, implied vol, svi/ssvi surfaces, heston, dupire
     src/volsurface/data/  market data: Deribit client, chain parsing, parity forward
     scripts/              snapshot to DuckDB, and svi, ssvi and heston figures (fit included)
     tests/                unit tests that run without network access
@@ -105,3 +119,5 @@ Run the tests:
 - Andersen, Simple and efficient simulation of the Heston stochastic volatility model (2008).
 - Carr and Madan, Option valuation using the fast Fourier transform (1999).
 - Albrecher et al., The little Heston trap (2007).
+- Dupire, Pricing with a smile (1994).
+- Gatheral, The Volatility Surface (2006), chapter 1.
