@@ -28,7 +28,7 @@ The project is built in increments. Each item lands when it works and is tested.
 - [x] Heston calibration to the surface
 - [x] Dupire local vol from the SVI surface, by analytic differentiation
 - [x] Heston Monte Carlo with the Andersen QE scheme
-- [ ] Variance reduction: antithetics and control variates
+- [x] Variance reduction: antithetics, control variates and Sobol
 - [ ] Exotics: barriers, autocallable, cliquet
 - [ ] Pathwise and likelihood-ratio greeks
 - [ ] Delta-hedging P&L backtest
@@ -98,6 +98,18 @@ The parameters here violate Feller on purpose, which is the regime that hurts a 
 
 Regenerate with `python scripts/plot_mc.py`.
 
+### Variance reduction
+
+Monte Carlo converges like one over the square root of the sample, which is slow. Three standard techniques are implemented, and the design that makes them fit together is that the whole simulation is driven by a fixed-dimension array of uniforms, two per time step. In the quadratic QE branch the uniform goes through the inverse normal and the exponential branch consumes it directly, so one uniform advances the variance whichever branch is taken. Antithetic sampling is then simply U to 1 - U, and quasi-Monte Carlo is simply swapping the pseudorandom uniforms for a scrambled Sobol sequence.
+
+![Variance reduction against plain Monte Carlo](figures/variance_reduction.png)
+
+Measuring the gain correctly matters as much as the techniques. Antithetic paths come in negatively correlated pairs, so the independent unit is the pair average, not the path; and Sobol points are deliberately not independent, so an i.i.d. standard error is meaningless on them and the error is instead taken from the spread across independent scrambles. With the naive formula all three appear to do nothing. Measured properly they give roughly 3.6x, 3.1x and 6.0x, and 14x combined, which is the same accuracy from fourteen times fewer paths. The combined curve is also visibly steeper than the one over square root of N reference, which is the quasi-Monte Carlo rate showing through.
+
+Control variates carry over to payoffs with no formula: pricing an arithmetic Asian call with the European call as control, whose exact mean comes from COS, cuts the variance by about 3.6x on its own.
+
+Regenerate with `python scripts/plot_variance_reduction.py`.
+
 ## Layout
 
     src/volsurface/       black-76 pricing, implied vol, svi/ssvi surfaces, heston, dupire, monte carlo
@@ -128,6 +140,8 @@ heston.price_cos(F, K, 0.0, 0.0, T, hes.params)    # price any European
 dupire.local_vol(k, T, fit.params)                 # local vol at (k, T)
 
 mc.price_european(F, K, T, hes.params)             # same price, by simulation
+mc.price_european(F, K, T, hes.params,             # 14x less variance
+                  method="sobol", antithetic=True, control=True)
 ```
 
 Scripts that reproduce every figure above:
@@ -150,5 +164,6 @@ Run the tests:
 - Andersen, Simple and efficient simulation of the Heston stochastic volatility model (2008).
 - Carr and Madan, Option valuation using the fast Fourier transform (1999).
 - Albrecher et al., The little Heston trap (2007).
+- Glasserman, Monte Carlo Methods in Financial Engineering (2003), chapters 4 and 7.
 - Dupire, Pricing with a smile (1994).
 - Gatheral, The Volatility Surface (2006), chapter 1.
