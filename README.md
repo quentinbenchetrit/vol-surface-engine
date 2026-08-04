@@ -102,7 +102,7 @@ Regenerate with `python scripts/plot_mc.py`.
 
     src/volsurface/       black-76 pricing, implied vol, svi/ssvi surfaces, heston, dupire, monte carlo
     src/volsurface/data/  market data: Deribit client, chain parsing, parity forward
-    scripts/              snapshot to DuckDB, and svi, ssvi and heston figures (fit included)
+    scripts/              snapshot to DuckDB, and one figure script per model step
     tests/                unit tests that run without network access
 
 ## Getting started
