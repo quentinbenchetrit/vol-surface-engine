@@ -83,7 +83,8 @@ def draw_uniforms(n_paths: int, n_steps: int, method: str = "pseudo",
 
 def simulate(S0, T, p: HestonParams, r=0.0, q=0.0, n_paths=100_000, n_steps=64,
              scheme="qe", seed=None, antithetic=False, method="pseudo",
-             return_paths=False, uniforms: Optional[np.ndarray] = None):
+             return_paths=False, return_variance=False,
+             uniforms: Optional[np.ndarray] = None):
     """Simulate Heston and return terminal spots, or the whole path grid.
 
     ``scheme`` is "qe" (Andersen) or "euler" (full truncation baseline).
@@ -101,9 +102,13 @@ def simulate(S0, T, p: HestonParams, r=0.0, q=0.0, n_paths=100_000, n_steps=64,
     dt = T / n_steps
     v = np.full(n_paths, p.v0, dtype=float)
     x = np.full(n_paths, np.log(S0), dtype=float)
+    return_paths = return_paths or return_variance
     paths = np.empty((n_steps + 1, n_paths)) if return_paths else None
+    vpaths = np.empty((n_steps + 1, n_paths)) if return_variance else None
     if return_paths:
         paths[0] = np.exp(x)
+    if return_variance:
+        vpaths[0] = v
 
     rho, xi, kappa, theta = p.rho, p.xi, p.kappa, p.theta
     g1 = g2 = 0.5                       # central discretisation
@@ -165,6 +170,57 @@ def simulate(S0, T, p: HestonParams, r=0.0, q=0.0, n_paths=100_000, n_steps=64,
         else:
             raise ValueError(f"unknown scheme {scheme!r}")
 
+        if return_paths:
+            paths[step + 1] = np.exp(x)
+        if return_variance:
+            vpaths[step + 1] = v
+
+    if return_variance:
+        return np.exp(x), paths, vpaths
+    return (np.exp(x), paths) if return_paths else np.exp(x)
+
+
+def simulate_local_vol(S0, T, ssvi_params, r=0.0, q=0.0, n_paths=100_000, n_steps=64,
+                       seed=None, antithetic=False, method="pseudo",
+                       return_paths=False, vol_bounds=(0.01, 5.0),
+                       uniforms: Optional[np.ndarray] = None):
+    """Simulate the Dupire local volatility diffusion off a fitted SSVI surface.
+
+    The dynamics are dS/S = (r - q) dt + sigma_loc(S_t, t) dW, discretised in
+    log space, with the local volatility read from the surface at the path's own
+    log-forward-moneyness. This reprices every vanilla by construction, so it is
+    the natural counterpart to Heston when asking whether two models that agree
+    on vanillas also agree on exotics.
+
+    One uniform per step is consumed, so the same antithetic and Sobol machinery
+    applies. Local vol is clipped to ``vol_bounds`` because the surface is only
+    meaningful where options trade.
+    """
+    from . import dupire
+
+    if uniforms is None:
+        if antithetic and n_paths % 2:
+            n_paths += 1
+        uniforms = draw_uniforms(n_paths, n_steps, method, seed, antithetic)[:, :n_steps]
+    n_paths = uniforms.shape[0]
+
+    dt = T / n_steps
+    x = np.full(n_paths, np.log(S0), dtype=float)
+    lnF0 = np.log(S0)
+    paths = np.empty((n_steps + 1, n_paths)) if return_paths else None
+    if return_paths:
+        paths[0] = np.exp(x)
+
+    lo, hi = vol_bounds
+    for step in range(n_steps):
+        t = step * dt
+        lnF = lnF0 + (r - q) * t                     # forward at the current time
+        k = x - lnF
+        # the surface starts at its first knot; below that reuse the front slice
+        t_eval = max(t, float(ssvi_params.T_knots[0]))
+        sig = np.clip(dupire.local_vol(k, t_eval, ssvi_params), lo, hi)
+        z = ndtri(uniforms[:, step])
+        x = x + (r - q - 0.5 * sig * sig) * dt + sig * np.sqrt(dt) * z
         if return_paths:
             paths[step + 1] = np.exp(x)
 

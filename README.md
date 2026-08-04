@@ -29,7 +29,7 @@ The project is built in increments. Each item lands when it works and is tested.
 - [x] Dupire local vol from the SVI surface, by analytic differentiation
 - [x] Heston Monte Carlo with the Andersen QE scheme
 - [x] Variance reduction: antithetics, control variates and Sobol
-- [ ] Exotics: barriers, autocallable, cliquet
+- [x] Exotics: barriers, autocallable, cliquet
 - [ ] Pathwise and likelihood-ratio greeks
 - [ ] Delta-hedging P&L backtest
 - [ ] Optional C++ Monte Carlo core with pybind11
@@ -110,9 +110,22 @@ Control variates carry over to payoffs with no formula: pricing an arithmetic As
 
 Regenerate with `python scripts/plot_variance_reduction.py`.
 
+### Exotics, and where two calibrated models disagree
+
+Three products, each exposing a different issue. Barriers are where discrete monitoring bites: a simulation only checks the barrier on its grid, misses excursions in between, and so lets too many knock-outs survive. The Brownian-bridge crossing probability corrects this in expectation and is close to converged at eight steps, where the uncorrected payoff still needs a few hundred. The Broadie-Glasserman-Kou barrier shift sits in between.
+
+![Barrier monitoring bias, and model disagreement on exotics](figures/exotics.png)
+
+The right panel is a controlled experiment and the point of the whole project. A Heston model is fixed, its own implied vol surface is generated, SSVI is fitted to that surface and Dupire local vol is read off it. The two models therefore agree on vanillas by construction, and indeed the vanilla call prices to within 0.1%. The barrier and the autocallable stay inside Monte Carlo noise. The cliquet differs by nearly 8%.
+
+That gap is not numerical error, it is the models saying different things. A cliquet resets its strike at every observation, so it prices the *forward* smile rather than today's, and local volatility flattens its forward smile far too quickly while Heston keeps generating skew. Matching today's vanillas does not pin down the dynamics, which is exactly why a desk cares which model it books structured products in.
+
+Regenerate with `python scripts/plot_exotics.py`.
+
 ## Layout
 
-    src/volsurface/       black-76 pricing, implied vol, svi/ssvi surfaces, heston, dupire, monte carlo
+    src/volsurface/       black-76 pricing, implied vol, svi/ssvi surfaces, heston, dupire,
+                          monte carlo, exotic payoffs
     src/volsurface/data/  market data: Deribit client, chain parsing, parity forward
     scripts/              snapshot to DuckDB, and one figure script per model step
     tests/                unit tests that run without network access
@@ -165,5 +178,6 @@ Run the tests:
 - Carr and Madan, Option valuation using the fast Fourier transform (1999).
 - Albrecher et al., The little Heston trap (2007).
 - Glasserman, Monte Carlo Methods in Financial Engineering (2003), chapters 4 and 7.
+- Broadie, Glasserman and Kou, A continuity correction for discrete barrier options (1997).
 - Dupire, Pricing with a smile (1994).
 - Gatheral, The Volatility Surface (2006), chapter 1.
