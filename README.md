@@ -27,7 +27,7 @@ The project is built in increments. Each item lands when it works and is tested.
 - [x] Heston characteristic function, European pricing by the COS method and Carr-Madan FFT
 - [x] Heston calibration to the surface
 - [x] Dupire local vol from the SVI surface, by analytic differentiation
-- [ ] Heston Monte Carlo with the Andersen QE scheme
+- [x] Heston Monte Carlo with the Andersen QE scheme
 - [ ] Variance reduction: antithetics and control variates
 - [ ] Exotics: barriers, autocallable, cliquet
 - [ ] Pathwise and likelihood-ratio greeks
@@ -88,9 +88,19 @@ Deriving this from the fitted surface rather than raw quotes is the point. Dupir
 
 Local vol is close to implied at the money and roughly twice as steep in skew nearby, which is the textbook relationship. Regenerate with `python scripts/plot_dupire.py`.
 
+### Monte Carlo, Andersen QE
+
+Where the project stops being a surface tool and becomes a pricer. A plain Euler discretisation of the CIR variance goes negative, which breaks the square root and biases prices badly. Andersen's QE scheme samples the next variance from a distribution matched to its first two conditional moments, quadratic when the variance is high and a mass at zero plus an exponential tail when it is low. The log-spot step carries the exact martingale correction, so the simulated forward is unbiased path by path.
+
+![QE bias against Euler, and repricing the vanilla strip](figures/mc_qe.png)
+
+The parameters here violate Feller on purpose, which is the regime that hurts a naive scheme most. With eight time steps QE is off by 0.009 while full-truncation Euler is off by 1.28; Euler still has not caught up at 128 steps. Once QE reaches the Monte Carlo noise floor the remaining wiggle is sampling error, not discretisation. On the right the simulation reprices the whole vanilla strip against COS, every strike inside its confidence interval, which is what licenses using it on payoffs that have no formula.
+
+Regenerate with `python scripts/plot_mc.py`.
+
 ## Layout
 
-    src/volsurface/       black-76 pricing, implied vol, svi/ssvi surfaces, heston, dupire
+    src/volsurface/       black-76 pricing, implied vol, svi/ssvi surfaces, heston, dupire, monte carlo
     src/volsurface/data/  market data: Deribit client, chain parsing, parity forward
     scripts/              snapshot to DuckDB, and svi, ssvi and heston figures (fit included)
     tests/                unit tests that run without network access
@@ -103,7 +113,7 @@ Local vol is close to implied at the money and roughly twice as steep in skew ne
 The whole pipeline, from live quotes to a local volatility, is a handful of lines:
 
 ```python
-from volsurface import implied_vol_surface, ssvi, heston, dupire
+from volsurface import implied_vol_surface, ssvi, heston, dupire, mc
 from volsurface.data import load_chain, forward_curve
 
 chain = load_chain("BTC")                          # full option chain, one API call
@@ -116,6 +126,8 @@ hes = heston.calibrate(surface)                    # dynamic model, ~1s
 heston.price_cos(F, K, 0.0, 0.0, T, hes.params)    # price any European
 
 dupire.local_vol(k, T, fit.params)                 # local vol at (k, T)
+
+mc.price_european(F, K, T, hes.params)             # same price, by simulation
 ```
 
 Scripts that reproduce every figure above:
