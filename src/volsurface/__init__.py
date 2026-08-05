@@ -12,7 +12,7 @@ Typical use:
     lv = dupire.local_vol(0.0, 0.5, fit.params)
 """
 
-from . import dupire, exotics, greeks, heston, mc, ssvi, svi
+from . import dupire, exotics, greeks, hedging, heston, mc, ssvi, svi
 from .black import black76_price, black76_vega, black76_delta
 from .impliedvol import implied_vol, implied_vol_surface
 
@@ -31,4 +31,5 @@ __all__ = [
     "mc",
     "exotics",
     "greeks",
+    "hedging",
 ]

@@ -29,7 +29,7 @@ The project is built in increments. Each item lands when it works and is tested.
 - [x] Variance reduction: antithetics, control variates and Sobol
 - [x] Exotics: barriers, autocallable, cliquet
 - [x] Pathwise and likelihood-ratio greeks
-- [ ] Delta-hedging P&L backtest
+- [ ] Delta-hedging P&L backtest (engine in, backtest and figure to come)
 - [ ] C++ Monte Carlo core with pybind11
 
 ## Results
@@ -139,7 +139,7 @@ Regenerate with `python scripts/plot_greeks.py`.
 ## Layout
 
     src/volsurface/       black-76 pricing, implied vol, svi/ssvi surfaces, heston, dupire,
-                          monte carlo, exotic payoffs, greeks
+                          monte carlo, exotic payoffs, greeks, hedging
     src/volsurface/data/  market data: Deribit client, chain parsing, parity forward
     scripts/              snapshot to DuckDB, and one figure script per model step
     tests/                unit tests that run without network access

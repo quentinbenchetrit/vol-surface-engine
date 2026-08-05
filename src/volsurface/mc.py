@@ -189,6 +189,36 @@ def simulate(S0, T, p: HestonParams, r=0.0, q=0.0, n_paths=100_000, n_steps=64,
     return (np.exp(x), paths) if return_paths else np.exp(x)
 
 
+def simulate_gbm(S0, T, sigma, r=0.0, q=0.0, n_paths=100_000, n_steps=64,
+                 seed=None, antithetic=False, method="pseudo", return_paths=True,
+                 uniforms: Optional[np.ndarray] = None):
+    """Geometric Brownian motion, exact in the log, one uniform per step.
+
+    Constant volatility is the case where discrete hedging theory gives a sharp
+    prediction, so it is the natural setting to check a hedging engine against.
+    """
+    if uniforms is None:
+        if antithetic and n_paths % 2:
+            n_paths += 1
+        uniforms = draw_uniforms(n_paths, n_steps, method, seed, antithetic)[:, :n_steps]
+    n_paths = uniforms.shape[0]
+
+    dt = T / n_steps
+    drift = (r - q - 0.5 * sigma * sigma) * dt
+    vol = sigma * np.sqrt(dt)
+    x = np.full(n_paths, np.log(S0), dtype=float)
+    paths = np.empty((n_steps + 1, n_paths)) if return_paths else None
+    if return_paths:
+        paths[0] = np.exp(x)
+
+    for step in range(n_steps):
+        x = x + drift + vol * ndtri(uniforms[:, step])
+        if return_paths:
+            paths[step + 1] = np.exp(x)
+
+    return (np.exp(x), paths) if return_paths else np.exp(x)
+
+
 def simulate_local_vol(S0, T, ssvi_params, r=0.0, q=0.0, n_paths=100_000, n_steps=64,
                        seed=None, antithetic=False, method="pseudo",
                        return_paths=False, vol_bounds=(0.01, 5.0),
