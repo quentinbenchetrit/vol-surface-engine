@@ -30,7 +30,7 @@ The project is built in increments. Each item lands when it works and is tested.
 - [x] Heston Monte Carlo with the Andersen QE scheme
 - [x] Variance reduction: antithetics, control variates and Sobol
 - [x] Exotics: barriers, autocallable, cliquet
-- [ ] Pathwise and likelihood-ratio greeks
+- [x] Pathwise and likelihood-ratio greeks
 - [ ] Delta-hedging P&L backtest
 - [ ] Optional C++ Monte Carlo core with pybind11
 
@@ -122,10 +122,26 @@ That gap is not numerical error, it is the models saying different things. A cli
 
 Regenerate with `python scripts/plot_exotics.py`.
 
+### Greeks
+
+Three ways to differentiate a Monte Carlo price, each with its own failure mode. All four estimators below agree with a deterministic COS reference; what separates them is variance, and whether they are valid at all.
+
+![Three greek estimators and how their error scales](figures/greeks.png)
+
+Finite differences reprice at bumped inputs, and the two runs must share their random draws. With independent draws the difference of two noisy prices is dominated by that noise: the same budget gives a standard error twelve times larger, which the right panel shows as a parallel line that never catches up. Common random numbers cost nothing and fix it.
+
+Pathwise differentiates the payoff along the path. Under Heston the terminal spot scales with the initial spot, so dS_T/dS_0 is S_T / S_0 and the call delta is the clean expectation of the discounted indicator times that ratio. It ties with common-random finite differences for the lowest variance here, and needs no bump size.
+
+Likelihood ratio differentiates the density instead of the payoff. Shifting the initial log-spot translates the first log-price step, which gives the score Z_1 over S_0 sigma_1. It costs about eight times the variance of pathwise on a call, and that is the price of its generality.
+
+The trade is not academic. On a digital call, pathwise does not merely lose accuracy, it is wrong: the indicator has zero derivative wherever it exists, so the estimator collapses to exactly zero against a true delta near 0.022. Likelihood ratio returns 0.0215 against a 0.0222 reference. Smooth payoff, use pathwise; discontinuous payoff, use likelihood ratio.
+
+Regenerate with `python scripts/plot_greeks.py`.
+
 ## Layout
 
     src/volsurface/       black-76 pricing, implied vol, svi/ssvi surfaces, heston, dupire,
-                          monte carlo, exotic payoffs
+                          monte carlo, exotic payoffs, greeks
     src/volsurface/data/  market data: Deribit client, chain parsing, parity forward
     scripts/              snapshot to DuckDB, and one figure script per model step
     tests/                unit tests that run without network access
@@ -179,5 +195,6 @@ Run the tests:
 - Albrecher et al., The little Heston trap (2007).
 - Glasserman, Monte Carlo Methods in Financial Engineering (2003), chapters 4 and 7.
 - Broadie, Glasserman and Kou, A continuity correction for discrete barrier options (1997).
+- Broadie and Glasserman, Estimating security price derivatives using simulation (1996).
 - Dupire, Pricing with a smile (1994).
 - Gatheral, The Volatility Surface (2006), chapter 1.

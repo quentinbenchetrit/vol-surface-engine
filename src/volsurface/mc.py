@@ -83,7 +83,7 @@ def draw_uniforms(n_paths: int, n_steps: int, method: str = "pseudo",
 
 def simulate(S0, T, p: HestonParams, r=0.0, q=0.0, n_paths=100_000, n_steps=64,
              scheme="qe", seed=None, antithetic=False, method="pseudo",
-             return_paths=False, return_variance=False,
+             return_paths=False, return_variance=False, return_score=False,
              uniforms: Optional[np.ndarray] = None):
     """Simulate Heston and return terminal spots, or the whole path grid.
 
@@ -158,7 +158,12 @@ def simulate(S0, T, p: HestonParams, r=0.0, q=0.0, n_paths=100_000, n_steps=64,
 
             k0 = k0 - K1 * v - 0.5 * K3 * v
             zs = ndtri(u_s)
-            x = x + (r - q) * dt + k0 + K1 * v + K2 * v_next + np.sqrt(np.maximum(K3 * v + K4 * v_next, 0.0)) * zs
+            sig_step = np.sqrt(np.maximum(K3 * v + K4 * v_next, 0.0))
+            if return_score and step == 0:
+                # Shifting ln S0 translates the first-step log-price, so the
+                # score of the density with respect to S0 is Z / (S0 * sigma_1).
+                score = zs / (S0 * np.maximum(sig_step, 1e-300))
+            x = x + (r - q) * dt + k0 + K1 * v + K2 * v_next + sig_step * zs
             v = v_next
         elif scheme == "euler":
             z1 = ndtri(u_v)
@@ -175,6 +180,10 @@ def simulate(S0, T, p: HestonParams, r=0.0, q=0.0, n_paths=100_000, n_steps=64,
         if return_variance:
             vpaths[step + 1] = v
 
+    if return_score:
+        if scheme != "qe":
+            raise ValueError("the likelihood-ratio score is only derived for the qe scheme")
+        return np.exp(x), score
     if return_variance:
         return np.exp(x), paths, vpaths
     return (np.exp(x), paths) if return_paths else np.exp(x)
