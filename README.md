@@ -15,8 +15,6 @@ Two points worth stating plainly:
 
 The forward and discount factor are not taken from the exchange. They are recovered from put-call parity: for one expiry, `C(K) - P(K) = DF * (F - K)`, so a linear fit of call-minus-put against strike gives `DF` (minus the slope) and `F` (intercept over `DF`), and `r = -ln(DF) / T`. Deribit's own forward is kept only as a cross-check, reported in basis points by the snapshot script.
 
-## Roadmap
-
 The project is built in increments. Each item lands when it works and is tested.
 
 - [x] Deribit client and tidy option chain, with DuckDB snapshots
@@ -32,7 +30,7 @@ The project is built in increments. Each item lands when it works and is tested.
 - [x] Exotics: barriers, autocallable, cliquet
 - [x] Pathwise and likelihood-ratio greeks
 - [ ] Delta-hedging P&L backtest
-- [ ] Optional C++ Monte Carlo core with pybind11
+- [ ] C++ Monte Carlo core with pybind11
 
 ## Results
 
