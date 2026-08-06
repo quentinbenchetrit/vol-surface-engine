@@ -1,6 +1,7 @@
 import numpy as np
 
 from volsurface import hedging, mc
+from volsurface.heston import HestonParams
 
 S0, K, T, SIGMA = 100.0, 100.0, 1.0, 0.20
 CALL = lambda ST: np.maximum(ST - K, 0.0)
@@ -70,3 +71,63 @@ def test_result_reports_its_grid():
     res, _ = _setup(32)
     assert res.n_rebalances == 32
     assert res.pnl.size == 40_000
+
+
+# selling volatility that the market does not deliver
+
+SELL, REALIZED = 0.25, 0.20
+
+
+def _edge():
+    price_sell, _ = hedging.black_scholes_call(K, T, SELL)
+    price_real, _ = hedging.black_scholes_call(K, T, REALIZED)
+    return float(price_sell(np.array([S0]), 0.0)[0] - price_real(np.array([S0]), 0.0)[0])
+
+
+def test_selling_rich_volatility_earns_the_value_difference():
+    """Either hedge earns the same average: the gap between the two BS values."""
+    edge = _edge()
+    for hedge_vol in (REALIZED, SELL):
+        res = hedging.hedge_under_gbm(S0, K, T, SELL, hedge_vol, REALIZED,
+                                      n_paths=20_000, n_steps=256, seed=3)
+        assert abs(res.mean - edge) < 4.0 * res.stderr
+
+
+def test_hedging_at_realized_vol_is_the_tighter_of_the_two():
+    kw = dict(n_paths=20_000, n_steps=512, seed=3)
+    at_realized = hedging.hedge_under_gbm(S0, K, T, SELL, REALIZED, REALIZED, **kw)
+    at_implied = hedging.hedge_under_gbm(S0, K, T, SELL, SELL, REALIZED, **kw)
+    assert at_realized.std < at_implied.std
+
+
+def test_hedging_at_realized_vol_becomes_deterministic():
+    """Its spread is discretisation only, so it keeps shrinking with the grid."""
+    kw = dict(n_paths=20_000, seed=3)
+    coarse = hedging.hedge_under_gbm(S0, K, T, SELL, REALIZED, REALIZED, n_steps=64, **kw)
+    fine = hedging.hedge_under_gbm(S0, K, T, SELL, REALIZED, REALIZED, n_steps=1024, **kw)
+    assert fine.std < 0.35 * coarse.std
+
+
+def test_hedging_at_implied_vol_never_loses_when_selling_rich():
+    """The profit is a gamma-weighted integral with a fixed sign."""
+    res = hedging.hedge_under_gbm(S0, K, T, SELL, SELL, REALIZED,
+                                  n_paths=20_000, n_steps=512, seed=3)
+    assert res.pnl.min() > 0.0
+
+
+# model error, which rebalancing cannot fix
+
+HES = HestonParams(kappa=2.0, theta=0.04, xi=0.6, rho=-0.7, v0=0.05)
+
+
+def test_heston_hedge_is_unbiased():
+    res = hedging.hedge_under_heston(S0, K, T, HES, n_paths=20_000, n_steps=256, seed=5)
+    assert abs(res.mean) < 4.0 * res.stderr
+
+
+def test_model_error_does_not_vanish_with_finer_rebalancing():
+    kw = dict(n_paths=20_000, seed=5)
+    coarse = hedging.hedge_under_heston(S0, K, T, HES, n_steps=128, **kw)
+    fine = hedging.hedge_under_heston(S0, K, T, HES, n_steps=1024, **kw)
+    # a spot-only hedge cannot touch variance risk, so the spread plateaus
+    assert fine.std > 0.8 * coarse.std

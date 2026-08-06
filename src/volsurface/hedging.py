@@ -21,7 +21,10 @@ from typing import Callable, NamedTuple
 
 import numpy as np
 
+from . import mc
 from .black import black76_delta, black76_price
+from .heston import HestonParams, price_cos
+from .impliedvol import implied_vol
 
 
 class HedgeResult(NamedTuple):
@@ -95,3 +98,46 @@ def black_scholes_call(K, T, sigma, r=0.0, q=0.0):
         return np.exp(-q * tau) * np.asarray(black76_delta(F, K, tau, sigma, "C"), dtype=float)
 
     return price, delta
+
+
+def hedge_under_gbm(S0, K, T, sell_vol, hedge_vol, realized_vol, r=0.0,
+                    n_paths=40_000, n_steps=256, seed=None) -> HedgeResult:
+    """Sell at one volatility, hedge at another, let the market realize a third.
+
+    This isolates what a volatility view earns. Selling at ``sell_vol`` when the
+    market realizes less is profitable, and the expected edge is the difference
+    of the two Black-Scholes values. Which volatility is used in the *delta*
+    decides the shape of that profit, not its average:
+
+      - hedging at the realized volatility makes the result deterministic in the
+        continuous limit, so the spread collapses as rebalancing gets finer,
+      - hedging at the implied volatility leaves a path-dependent result whose
+        spread does not vanish, because the profit is then accumulated as a
+        gamma-weighted integral along whichever path the market happens to take.
+    """
+    price_sell, _ = black_scholes_call(K, T, sell_vol, r)
+    _, delta_fn = black_scholes_call(K, T, hedge_vol, r)
+    premium = float(price_sell(np.array([S0]), 0.0)[0])
+    _, paths = mc.simulate_gbm(S0, T, realized_vol, r, n_paths=n_paths,
+                               n_steps=n_steps, seed=seed)
+    return delta_hedge(paths, T, premium, lambda ST: np.maximum(ST - K, 0.0), delta_fn, r)
+
+
+def hedge_under_heston(S0, K, T, params: HestonParams, r=0.0, q=0.0,
+                       hedge_vol=None, n_paths=40_000, n_steps=256,
+                       seed=None) -> HedgeResult:
+    """Sell a Heston-priced call and hedge it with a Black-Scholes delta.
+
+    The option is sold at its own model price, so the hedge is unbiased, but a
+    delta on the spot alone cannot touch the variance risk. The leftover spread
+    therefore flattens out instead of vanishing as rebalancing gets finer: that
+    residual is model error, and no amount of rebalancing removes it. Killing it
+    needs a second option in the hedge.
+    """
+    premium = float(price_cos(S0, K, r, q, T, params, "C"))
+    if hedge_vol is None:
+        hedge_vol = implied_vol(premium, S0 * np.exp((r - q) * T), K, T, np.exp(-r * T), "C")
+    _, delta_fn = black_scholes_call(K, T, hedge_vol, r, q)
+    _, paths = mc.simulate(S0, T, params, r, q, n_paths=n_paths, n_steps=n_steps,
+                           seed=seed, return_paths=True)
+    return delta_hedge(paths, T, premium, lambda ST: np.maximum(ST - K, 0.0), delta_fn, r)
