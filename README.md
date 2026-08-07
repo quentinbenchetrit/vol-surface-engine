@@ -29,7 +29,7 @@ The project is built in increments. Each item lands when it works and is tested.
 - [x] Variance reduction: antithetics, control variates and Sobol
 - [x] Exotics: barriers, autocallable, cliquet
 - [x] Pathwise and likelihood-ratio greeks
-- [ ] Delta-hedging P&L backtest (engine in, backtest and figure to come)
+- [x] Delta-hedging P&L backtest
 - [ ] C++ Monte Carlo core with pybind11
 
 ## Results
@@ -136,6 +136,20 @@ The trade is not academic. On a digital call, pathwise does not merely lose accu
 
 Regenerate with `python scripts/plot_greeks.py`.
 
+### Delta-hedging backtest
+
+The closing check, and the one that ties everything together. Sell an option, hedge it with the model's own delta on a rebalancing grid, and see what is left. If the pricer and the greeks are consistent the leftover should sit on zero, and it does at every frequency tested.
+
+![Hedging error, the sqrt law, and selling rich volatility](figures/hedging.png)
+
+Under constant volatility the spread of that error falls like one over the square root of the number of rebalances: quadrupling the grid halves the spread, from 2.35 at eight rebalances to 0.22 at a thousand. That is the discrete hedging law, recovered numerically rather than assumed.
+
+The middle panel is the honest part. Let the underlying follow Heston and hedge it with the same Black-Scholes delta, and the hedge stays unbiased but its spread stops improving: 3.81 at eight rebalances, 2.71 at a thousand, flat from a few hundred onward. Rebalancing faster removes discretisation error and does nothing at all about model error, because a hedge in the spot cannot touch variance risk. Removing that residual needs a second option in the hedge, not a finer grid.
+
+The right panel prices a volatility view. Selling at 25 into a market that realizes 20 earns the gap between the two Black-Scholes values, about 1.98, and it earns that on average whichever delta is used. What the choice of hedging volatility decides is the shape: hedging at the realized volatility converges to a deterministic result, while hedging at the implied one leaves a wider, path-dependent distribution, since the profit is then collected as a gamma-weighted integral along whatever path the market takes. Both are strictly positive here, which is the sign of that integral rather than luck.
+
+Regenerate with `python scripts/plot_hedging.py`.
+
 ## Layout
 
     src/volsurface/       black-76 pricing, implied vol, svi/ssvi surfaces, heston, dupire,
@@ -179,6 +193,11 @@ Scripts that reproduce every figure above:
     python scripts/plot_heston.py
     python scripts/plot_heston_calibration.py --currency BTC
     python scripts/plot_dupire.py --currency BTC
+    python scripts/plot_mc.py
+    python scripts/plot_variance_reduction.py
+    python scripts/plot_exotics.py
+    python scripts/plot_greeks.py
+    python scripts/plot_hedging.py
 
 Run the tests:
 
@@ -194,5 +213,6 @@ Run the tests:
 - Glasserman, Monte Carlo Methods in Financial Engineering (2003), chapters 4 and 7.
 - Broadie, Glasserman and Kou, A continuity correction for discrete barrier options (1997).
 - Broadie and Glasserman, Estimating security price derivatives using simulation (1996).
+- Ahmad and Wilmott, Which free lunch would you like today, sir? (2005).
 - Dupire, Pricing with a smile (1994).
 - Gatheral, The Volatility Surface (2006), chapter 1.
