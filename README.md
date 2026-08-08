@@ -15,22 +15,7 @@ Two points worth stating plainly:
 
 The forward and discount factor are not taken from the exchange. They are recovered from put-call parity: for one expiry, `C(K) - P(K) = DF * (F - K)`, so a linear fit of call-minus-put against strike gives `DF` (minus the slope) and `F` (intercept over `DF`), and `r = -ln(DF) / T`. Deribit's own forward is kept only as a cross-check, reported in basis points by the snapshot script.
 
-The project is built in increments. Each item lands when it works and is tested.
 
-- [x] Deribit client and tidy option chain, with DuckDB snapshots
-- [x] Forward and discount from put-call parity, cross-checked against the exchange
-- [x] Black-76 pricer and implied vol solver, robust in the wings
-- [x] SVI per-slice fit with a butterfly no-arbitrage constraint
-- [x] SSVI surface with a calendar no-arbitrage constraint
-- [x] Heston characteristic function, European pricing by the COS method and Carr-Madan FFT
-- [x] Heston calibration to the surface
-- [x] Dupire local vol from the SVI surface, by analytic differentiation
-- [x] Heston Monte Carlo with the Andersen QE scheme
-- [x] Variance reduction: antithetics, control variates and Sobol
-- [x] Exotics: barriers, autocallable, cliquet
-- [x] Pathwise and likelihood-ratio greeks
-- [x] Delta-hedging P&L backtest
-- [x] C++ Monte Carlo core with pybind11 (QE kernel; paths and greeks still NumPy)
 
 ## Results
 
