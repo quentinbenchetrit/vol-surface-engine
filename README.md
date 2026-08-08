@@ -30,7 +30,7 @@ The project is built in increments. Each item lands when it works and is tested.
 - [x] Exotics: barriers, autocallable, cliquet
 - [x] Pathwise and likelihood-ratio greeks
 - [x] Delta-hedging P&L backtest
-- [ ] C++ Monte Carlo core with pybind11
+- [x] C++ Monte Carlo core with pybind11 (QE kernel; paths and greeks still NumPy)
 
 ## Results
 
@@ -150,10 +150,24 @@ The right panel prices a volatility view. Selling at 25 into a market that reali
 
 Regenerate with `python scripts/plot_hedging.py`.
 
+### C++ kernel
+
+The QE simulation is also written as a fused C++ loop bound with pybind11, walking one path start to finish with the state in registers instead of sweeping the whole population once per time step.
+
+It is driven by the same array of uniforms as the NumPy version, two per step, which is the design decision that matters. Antithetic sampling and Sobol keep working untouched, and the two implementations can be compared path by path rather than only in distribution: they agree to a relative 2e-13, so the parity test is a real check on the C++ rather than a statistical shrug.
+
+    100,000 paths x 64 steps     NumPy   21 M steps/s     C++  126 M steps/s     6.0x
+    400,000 paths x 256 steps    NumPy   20 M steps/s     C++  139 M steps/s     7.1x
+
+Where that speed-up comes from is worth stating plainly, because the obvious guess is wrong. This kernel is not memory bound, it is bound by transcendental functions: two inverse normal CDFs plus several logs and square roots per step. NumPy already evaluates those in vectorized SIMD form, so a scalar C++ loop on one core barely beats it, around 1.1x measured. The gain is threading. Paths are independent, NumPy runs on one core, and splitting the population across cores is what turns 1.1x into 7x.
+
+The extension is optional by construction. If pybind11 or a compiler is missing the build still succeeds, `mc.has_fast_kernel()` reports False, and everything falls back to NumPy; `use_python=True` forces that path on demand, which is also how the parity test gets both implementations in one process. Only terminal spots come from C++, so anything asking for paths, variance or the likelihood-ratio score stays on the NumPy implementation.
+
 ## Layout
 
     src/volsurface/       black-76 pricing, implied vol, svi/ssvi surfaces, heston, dupire,
                           monte carlo, exotic payoffs, greeks, hedging
+    src/volsurface/_core.cpp   optional C++ QE kernel, bound with pybind11
     src/volsurface/data/  market data: Deribit client, chain parsing, parity forward
     scripts/              snapshot to DuckDB, and one figure script per model step
     tests/                unit tests that run without network access
@@ -162,6 +176,8 @@ Regenerate with `python scripts/plot_hedging.py`.
 
     python -m venv .venv && source .venv/bin/activate
     pip install -e ".[dev,plot]"
+
+The C++ kernel is built automatically when a compiler is present, and silently skipped otherwise. Check with `python -c "from volsurface import mc; print(mc.has_fast_kernel())"`.
 
 The whole pipeline, from live quotes to a local volatility, is a handful of lines:
 

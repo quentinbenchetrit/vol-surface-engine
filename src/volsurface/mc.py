@@ -40,8 +40,18 @@ from scipy.stats import qmc
 
 from .heston import HestonParams
 
+try:  # the compiled kernel is a speed-up, never a requirement
+    from . import _core
+except ImportError:  # pragma: no cover - depends on the build environment
+    _core = None
+
 PSI_C = 1.5
 _EPS = 1e-12
+
+
+def has_fast_kernel() -> bool:
+    """Whether the compiled QE kernel is available in this install."""
+    return _core is not None
 
 
 class MCResult(NamedTuple):
@@ -84,7 +94,7 @@ def draw_uniforms(n_paths: int, n_steps: int, method: str = "pseudo",
 def simulate(S0, T, p: HestonParams, r=0.0, q=0.0, n_paths=100_000, n_steps=64,
              scheme="qe", seed=None, antithetic=False, method="pseudo",
              return_paths=False, return_variance=False, return_score=False,
-             uniforms: Optional[np.ndarray] = None):
+             uniforms: Optional[np.ndarray] = None, use_python: bool = False):
     """Simulate Heston and return terminal spots, or the whole path grid.
 
     ``scheme`` is "qe" (Andersen) or "euler" (full truncation baseline).
@@ -98,6 +108,15 @@ def simulate(S0, T, p: HestonParams, r=0.0, q=0.0, n_paths=100_000, n_steps=64,
     n_paths, dim = uniforms.shape
     if dim != 2 * n_steps:
         raise ValueError(f"uniforms must have {2 * n_steps} columns, got {dim}")
+
+    # The compiled kernel only produces terminal spots, so it takes over exactly
+    # when nothing else is asked of the simulation. Same uniforms, same scheme,
+    # so the two paths through this function agree to rounding.
+    if (_core is not None and scheme == "qe" and not use_python
+            and not (return_paths or return_variance or return_score)):
+        return _core.simulate_qe(np.ascontiguousarray(uniforms, dtype=float),
+                                 float(S0), float(T), float(p.kappa), float(p.theta),
+                                 float(p.xi), float(p.rho), float(p.v0), float(r), float(q))
 
     dt = T / n_steps
     v = np.full(n_paths, p.v0, dtype=float)
